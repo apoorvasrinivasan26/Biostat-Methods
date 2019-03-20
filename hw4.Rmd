@@ -1,0 +1,151 @@
+---
+title: "P8131_hw4"
+author: "Apoorva Srinivasan"
+date: "3/4/2019"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r}
+library(tidyverse)
+library(nnet)
+```
+
+
+
+```{r}
+satisfaction_data = tibble(
+  resp_low = c(65, 34, 130, 141, 67, 130),
+  resp_medium = c(54, 47, 76, 116, 48, 105),
+  resp_high = c(100, 100, 111, 191, 62, 104),
+  contact = rep(c('low', 'high'), 3),
+  type = c('tower_block', 'tower_block', 'apartment', 'apartment', 'house', 'house')
+)
+satisfaction_data_manipltd = 
+  satisfaction_data %>% 
+  gather(key = 'satisfaction', value = 'count', resp_low:resp_high) %>% 
+  mutate(satisfaction = str_sub(satisfaction, 6),
+         satisfaction = fct_relevel(satisfaction, 'low', 'medium', 'high'),
+         type = fct_relevel(type, 'tower_block','apartment', 'house'),
+         contact = fct_relevel(contact, 'low', 'high')
+  )
+
+```
+
+
+## i) 
+
+```{r}
+table_cor = 
+  satisfaction_data_manipltd %>% 
+  group_by(contact, satisfaction) %>% 
+  summarize(sum = sum(count)) %>% 
+  spread(contact, sum) %>% 
+  mutate(high = 100 * high / sum(high),
+         low = 100 * low / sum(low)) 
+table_cor %>% knitr::kable(digits = 2,
+                      col.names = c('Satisfaction', 'Low Contact (%)', 'High Contact (%)'))
+```
+
+From the table above, we can see that residents with higher degree of contact with others tend to be more satisfied with their housing conditions. The degree of contact is positively associated with housing satisfaction.
+
+```{r}
+table_toh = 
+  satisfaction_data_manipltd %>% 
+  group_by(type, satisfaction) %>% 
+  summarize(sum = sum(count)) %>% 
+  spread(type, sum) %>% 
+  mutate(tower_block = tower_block / sum(tower_block),
+         apartment = apartment / sum(apartment),
+         house = house / sum(house)
+  )
+table_toh %>% 
+  knitr::kable(digits = 2,
+               col.names = c('Satisfaction', 'Tower Block (%)', 'Apartment (%)', 'House (%)'))
+```
+
+The table above shows association between satisfaction and type of housing. Tower block Residents have the highest proportion of high satisfaction (50%) and the lowest proportion of low satisfaction (25%). Residents living in apartments have high level of satisfaction, whereas residents living in houses have low level of satisfaction.
+
+
+
+## ii) 
+
+
+```{r}
+satisfaction_data =  
+  satisfaction_data_manipltd %>% 
+  spread(satisfaction, count) %>% 
+  mutate(
+    contact = as_factor(contact),
+    type = as_factor(type)
+  ) %>% 
+  select(low, medium, high, everything())
+  
+```
+
+
+```{r}
+fit_nomial = multinom(satisfaction ~ contact + type, weights = count, data = satisfaction_data_manipltd)
+```
+
+#### Pattern in the associations
+```{r}
+# Coefficients
+summary(fit_nomial)$coefficients
+```
+
+The log odds ratio of medium vs low satisfaction between high and low level of contact is 0.296. The log odds ratio of high vs low satisfaction between high and low level of contact is 0.323. This suggests that residents with higher levels of contact have higher level of satisfaction.
+The log odds ratio of medium vs low satisfaction between apartment and tower block residents is -0.41. The log odds ratio of high vs low satisfaction between apartment and tower block residents is -0.64. This tells us that the highest level of satisfaction is among people living in tower blocks
+
+Intercept interpretation: the log odds ratio of med vs low satisfaction among people living in tower block is -0.1
+
+#### Odds ratios with 95% confidence intervals
+```{r}
+fit_nomial %>% 
+  broom::tidy() %>% 
+  mutate(CIL = estimate * exp(std.error * qnorm(0.025)),
+         CIR = estimate / exp(std.error * qnorm(0.025))) %>% 
+  select(-std.error, -statistic, -p.value) %>% 
+  filter(term != '(Intercept)') %>% 
+  knitr::kable(digits = 2)
+```
+
+
+#### Goodness of fit
+```{r}
+
+pi_hat = predict(fit_nomial, satisfaction_data, type = 'probs')
+
+res = satisfaction_data[,1:3]
+m = rowSums(res)
+G_stat = sum((res - pi_hat * m)^2 / (pi_hat * m))
+G_stat
+p_value = 1 - pchisq(G_stat, df = (6-4)*(3-1))
+p_value #good fit
+```
+
+The p-value is >0.05 hence we conclude that it's a good fit
+
+
+## iii) 
+
+```{r}
+fit_polr = MASS::polr(satisfaction ~ contact + type, data = satisfaction_data_manipltd, weights = count)
+summary(fit_polr)
+```
+
+The log odds ratio of satisfaction between high and low levels of contact is 0.2524, so people with higher level of contact with others have greater satisfaction. 
+
+The log odds ratio of satisfaction between the housing types apartment and tower block is -0.5009. The log odds ratio between house and tower block is -0.7362. This tells us that house residents have the lowest level of satisfaction and tower block residents have the highest level of satisfaction.
+
+## iv) 
+
+```{r}
+pihat_polr = predict(fit_polr, satisfaction_data[,4:5], type = 'prob')
+resid_matrix = cbind(satisfaction_data[,4:5], (res - pihat_polr*m)/sqrt(pihat_polr*m))
+resid_matrix
+
+```
+
+The largest Pearson residual is -1.478, corresponding to the response level 'high satisfaction' and predictor levels 'high contact' and 'house'.

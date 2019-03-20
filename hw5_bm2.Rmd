@@ -1,0 +1,183 @@
+---
+title: "Bm2_hw5"
+author: "Apoorva Srinivasan"
+date: "3/6/2019"
+output: pdf_document
+---
+
+```{r}
+library(tidyverse)
+library(MASS)
+library(pscl)
+library(nnet)
+```
+
+```{r}
+crab_data = read.table("HW5-crab.txt", header = TRUE) %>%
+  as.tibble() %>%
+  mutate(C = as.factor(C),
+         S = as.factor(S)
+  )
+```
+
+```{r}
+m1 <- glm(Sa~W, family=poisson(link = log), data=crab_data)
+summary(m1)
+```
+
+
+the log rate of no of satellites increases by 0.164 with a unit inc in female's width of carapace
+
+OR 
+
+the number of satellites increases by 1.18 with a unit increase in female's width of carapace
+
+```{r}
+m2 = glm(Sa~W + Wt, family=poisson(link = log), data=crab_data)
+summary(m2)
+```
+
+
+
+Adjusting for weight of the females, the number of satellites increases by 1.05 with a unit increase in width of carapace.
+Adjusting for width of carapase, the number of satellites increases by 1.57 for a unit increase in weight of females.
+
+
+
+####deviance analysis
+
+```{r}
+test.stat=m1$deviance-m2$deviance
+df=171-170
+pval=1-pchisq(test.stat,df=df) # chisq test
+pval #rej, go with the bigger model
+```
+
+The p value is smaller than 0.05. Hence, we reject the null and go with the bigger model
+
+
+####Overdispersion
+
+```{r}
+pval = 1 - pchisq(m2$deviance, df =170)
+pval 
+```
+
+p-value is 0 indicating that it's a bad fit
+
+```{r}
+res.m2 = residuals(m2,type='pearson',data=crab_data)  
+res.m2
+G1=sum(res.m2^2) 
+phi=G1/(170)
+phi #3.16
+m2$deviance/m2$df.residual #3.3
+```
+
+
+```{r}
+plot(qnorm((173+1:173+0.5)/(2*173+1.125)),sort(abs(res.m2)),xlab='Expected Half-Normal Order Stats',ylab='Ordered Abs Pearson Residuals')
+abline(a=0,b=1)
+abline(a=0,b=sqrt(phi),lty=2) 
+```
+
+
+We can see from the graph above that over-dispersion occurs.
+
+```{r}
+m2_nb=glm.nb(Sa~W + Wt, data=crab_data)
+summary(m2_nb)
+```
+
+####Interpretation:
+
+the number  of satellites increases by 1.02 with a unit increase in female's width of carapace and the number of satellites increases by 1.93 with a unit increase in weight of the female crab
+
+Since the dispersion parameter for Negative Binomial is very small(0.9324) it means that it's been adjusted for overdispersion
+
+##PROBLEM 2
+
+```{r}
+parasite_data = read.table("HW5-parasite.txt", header = TRUE) %>%
+  as.tibble() %>%
+  janitor::clean_names() %>%
+  dplyr::select(sample, intensity, year, length, area) %>%
+  mutate(area = as.factor(area),
+         year = as.factor(year)
+  )
+  
+```
+
+```{r}
+p2a = glm(intensity~area + year + length , family=poisson(link = log), data=parasite_data)
+summary(p2a)
+```
+
+####Interpretation:
+
+* The log rate ratio of intensity between area1 and area2 is -0.212. This implies that the number of parasites in area 2 is 0.809 times area1
+
+* The number of parasites in area 3 is estimated to be 0.890 times the number in area 1. 
+
+* The number of parasites in area 4 is estimated to be 4.075 times the number in area 1.
+
+
+* The number of parasites in year 2000 is 1.955 times the number in 1999, holding other variables constant. 
+
+* The number of parasites in year 2001 is 0.804 times the number in 1999.
+
+* Holding other variables constant, the number of parasites changes 0.972 fold with one-unit increase in length of the fish
+
+```{r}
+G = sum(residuals(p2a, type = 'pearson')^2)
+1 - pchisq(G, df = p2a$df.residual)
+```
+
+The p value is <0.05 then we conclude that the fit is not good
+
+
+```{r}
+p2c = zeroinfl(intensity ~ area + year + length | area + year + length, data = parasite_data)
+summary(p2c)
+```
+
+
+
+####Interpretation:
+
+* area 2 has 2.052 times the odds of susceptible fish than area 1
+
+* area 3 has 1.93 times the odds of susceptible fish than area 1
+
+* area 4 has 0.36 times the odds of susceptible fish than area 1
+
+* 2000 has 0.471 times the odds of susceptible fish compared to 1999. 
+
+* 2001 has 1.579 times the odds of susceptible fish compared to 1999.
+
+* The odds of parasite-susceptiblity changes 0.99 fold with one-unit increase in length of fish.
+
+
+##### Count model coefficients
+
+```{r warning = F}
+
+summary(p2c)$coefficients$count %>% 
+  broom::tidy() %>% 
+  mutate(exp_estimate = exp(Estimate)) 
+
+```
+
+####Interpretation
+
+* Adjusting for other variables, the number of parasites in area 2 is estimated to be 1.31 times the number in area 1. 
+
+* The number of parasites in area 3 is estimated to be 1.16 times the number in area 1. 
+
+* The number of parasites in area 4 is estimated to be 2.57 times the number in area 1.
+
+* Adjusting for other variables, the number of parasites in year 2000 is 1.48 times the number in 1999. 
+
+* The number of parasites in year 2001 is 0.96 times the number in 1999.
+
+* The number of parasites changes 0.96 fold with one-unit increase in length of the fish, holding other variables constant. 
